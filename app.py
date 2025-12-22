@@ -7,82 +7,88 @@ from collections import deque
 # Generate Maze with Loops
 # =====================================
 def generate_maze(width=15, height=12):
+    """Generate a perfect maze using recursive backtracking, then add random openings to create loops."""
     maze = [[1] * (width * 2 + 1) for _ in range(height * 2 + 1)]
     
     def carve(x, y):
         maze[y][x] = 0
-        dirs = [(0, 2), (2, 0), (0, -2), (-2, 0)]
-        random.shuffle(dirs)
-        for dx, dy in dirs:
+        directions = [(0, 2), (2, 0), (0, -2), (-2, 0)]
+        random.shuffle(directions)
+        for dx, dy in directions:
             nx, ny = x + dx, y + dy
             if 1 <= nx < width * 2 and 1 <= ny < height * 2 and maze[ny][nx] == 1:
                 maze[y + dy // 2][x + dx // 2] = 0
                 carve(nx, ny)
     
     carve(1, 1)
-    maze[1][0] = 0  # Entrance
-    maze[height * 2 - 1][width * 2] = 0  # Exit
+    maze[1][0] = 0                          # Entrance (top-left)
+    maze[height * 2 - 1][width * 2] = 0      # Exit (bottom-right)
     
-    # أهم جزء: إضافة فتحات عشوائية لخلق حلقات ومسارات متعددة
+    # Key feature: add random wall removals to create multiple paths and loops
     add_random_openings(maze, holes=60)
     
     return maze, (1, 0), (height * 2 - 1, width * 2)
 
 def add_random_openings(maze, holes=60):
+    """Randomly remove walls to introduce loops and alternative routes."""
     h, w = len(maze), len(maze[0])
     for _ in range(holes):
         y = random.randint(1, h - 2)
         x = random.randint(1, w - 2)
-        if maze[y][x] == 1:  # فقط جدران
+        if maze[y][x] == 1:  # Only remove actual walls
             maze[y][x] = 0
 
 # =====================================
-# Build Graph
+# Build Graph Representation
 # =====================================
 def build_graph(maze):
+    """Convert the 2D maze into an adjacency list graph."""
     graph = {}
-    dirs = [(0,1), (1,0), (0,-1), (-1,0)]
+    directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
     h, w = len(maze), len(maze[0])
     for y in range(h):
         for x in range(w):
-            if maze[y][x] == 0:
-                graph[(y,x)] = []
-                for dy, dx in dirs:
+            if maze[y][x] == 0:  # Passable cell
+                graph[(y, x)] = []
+                for dy, dx in directions:
                     ny, nx = y + dy, x + dx
                     if 0 <= ny < h and 0 <= nx < w and maze[ny][nx] == 0:
-                        graph[(y,x)].append((ny,nx))
+                        graph[(y, x)].append((ny, nx))
     return graph
 
 # =====================================
-# Heuristic (مع random لتنويع Greedy)
+# Heuristic Function (with randomness for variety)
 # =====================================
 def manhattan(a, b):
-    return abs(a[0]-b[0]) + abs(a[1]-b[1]) + random.randint(0, 4)
+    """Manhattan distance with small random noise to break ties differently."""
+    return abs(a[0] - b[0]) + abs(a[1] - b[1]) + random.randint(0, 4)
 
 # =====================================
-# Maze Renderer (Text-based)
+# Text-based Maze Renderer
 # =====================================
 def render_maze(maze, pos=None, visited=None, path=None):
-    s = ""
+    """Render the maze as a string using emojis."""
+    output = ""
     for y in range(len(maze)):
         for x in range(len(maze[0])):
-            if pos and (y,x) == pos:
-                s += "🧍"
-            elif path and (y,x) in path:
-                s += "🟩"
-            elif visited and (y,x) in visited:
-                s += "▫️"
+            if pos and (y, x) == pos:
+                output += "🧍"      # Current position
+            elif path and (y, x) in path:
+                output += "🟩"      # Final solution path
+            elif visited and (y, x) in visited:
+                output += "▫️"      # Explored cell
             elif maze[y][x] == 1:
-                s += "⬛"
+                output += "⬛"      # Wall
             else:
-                s += "⬜"
-        s += "\n"
-    return s
+                output += "⬜"      # Open path
+        output += "\n"
+    return output
 
 # =====================================
-# Solvers (Generator - خطوة بخطوة)
+# Search Algorithms (Generator-based for animation)
 # =====================================
 def bfs_solver(graph, start, goal):
+    """Breadth-First Search – guarantees shortest path."""
     queue = deque([[start]])
     visited = set([start])
     yield start, visited.copy(), None
@@ -102,6 +108,7 @@ def bfs_solver(graph, start, goal):
                 queue.append(path + [neighbor])
 
 def dfs_solver(graph, start, goal):
+    """Depth-First Search – often finds long, winding paths."""
     stack = [[start]]
     visited = set()
     yield start, set(), None
@@ -120,7 +127,7 @@ def dfs_solver(graph, start, goal):
             yield node, visited.copy(), set(path)
             return
         
-        # ترتيب عشوائي للجيران عشان DFS يسلك طرق مختلفة كل مرة
+        # Shuffle neighbors for varied (usually longer) paths
         neighbors = graph[node][:]
         random.shuffle(neighbors)
         
@@ -129,12 +136,12 @@ def dfs_solver(graph, start, goal):
                 stack.append(path + [neighbor])
 
 def greedy_solver(graph, start, goal):
+    """Greedy Best-First Search – follows heuristic, fast but not always optimal."""
     open_list = [[start]]
     visited = set([start])
     yield start, visited.copy(), None
     
     while open_list:
-        # ترتيب حسب الـ heuristic
         open_list.sort(key=lambda p: manhattan(p[-1], goal))
         path = open_list.pop(0)
         node = path[-1]
@@ -151,22 +158,23 @@ def greedy_solver(graph, start, goal):
                 open_list.append(path + [neighbor])
 
 # =====================================
-# Streamlit UI
+# Streamlit User Interface
 # =====================================
 st.set_page_config(page_title="Maze Solver AI", layout="centered")
-st.title("🧠 Maze Solver Visualization - مقارنة حقيقية!")
+st.title("🧠 Maze Solver Visualization")
 
+# Sidebar controls
 algo = st.sidebar.selectbox(
-    "اختر الخوارزمية",
-    ["BFS (أقصر مسار مضمون)", "DFS (مسار طويل ملتوي)", "Greedy (جشع - متوسط)"]
+    "Select Algorithm",
+    ["BFS (Guaranteed Shortest Path)", "DFS (Long & Winding Paths)", "Greedy Best-First (Heuristic)"]
 )
 
-speed = st.sidebar.slider("سرعة الأنيميشن (ثواني)", 0.01, 0.5, 0.1)
+speed = st.sidebar.slider("Animation Speed (seconds)", 0.01, 0.5, 0.1, 0.01)
 
-if st.sidebar.button("🔄 متاهة جديدة"):
+if st.sidebar.button("🔄 Generate New Maze"):
     st.session_state.clear()
 
-# Initialize
+# Initialize maze and graph if not present
 if "maze" not in st.session_state:
     maze, start, goal = generate_maze()
     st.session_state.maze = maze
@@ -179,10 +187,12 @@ start = st.session_state.start
 goal = st.session_state.goal
 graph = st.session_state.graph
 
+# Display initial maze
 placeholder = st.empty()
-placeholder.code(render_maze(maze, start), language=None)
+placeholder.code(render_maze(maze, pos=start), language=None)
 
-if st.button("▶️ ابدأ الحل"):
+# Solve button
+if st.button("▶️ Start Solving"):
     if "BFS" in algo:
         solver = bfs_solver(graph, start, goal)
     elif "DFS" in algo:
@@ -197,12 +207,12 @@ if st.button("▶️ ابدأ الحل"):
         if path:
             final_path_len = len(path) - 1
     
-    if final_path_len:
-        st.success(f"🎉 تم الحل بـ {algo}!")
-        st.markdown(f"**طول المسار النهائي: {final_path_len} خطوة**")
+    if final_path_len is not None:
+        st.success(f"🎉 Solved with {algo}!")
+        st.markdown(f"**Final Path Length: {final_path_len} steps**")
         st.balloons()
     else:
-        st.error("لم يتم العثور على مسار!")
+        st.error("No path found!")
 
-st.caption("⬛ جدار | ⬜ ممر | ▫️ مزار | 🟩 المسار النهائي | 🧍 الموقع الحالي")
-st.markdown("**نصيحة:** جرب متاهة جديدة عدة مرات، ثم قارن الثلاث خوارزميات → DFS هيطول جدًا! 🚀")
+st.caption("⬛ Wall | ⬜ Open | ▫️ Visited | 🟩 Solution Path | 🧍 Current Position")
+st.markdown("**Tip:** Generate a few mazes, then compare all three algorithms — DFS will usually produce dramatically longer paths!")
