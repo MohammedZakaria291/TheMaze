@@ -1,212 +1,199 @@
 import streamlit as st
 import random
-import numpy as np
+import time
 from collections import deque
 
-st.set_page_config(page_title="Smart Maze Solver", layout="centered")
-st.title("🏰 Maze Solver - متاهات مع حلقات لمقارنة حقيقية!")
-st.markdown("الآن المتاهات فيها تفرعات وحلقات → الخوارزميات هتطلع نتايج مختلفة تمامًا!")
+# =====================================
+# Generate Maze
+# =====================================
+def generate_maze(width=15, height=12):
+    maze = [[1] * (width * 2 + 1) for _ in range(height * 2 + 1)]
 
-# ====================== توليد متاهة مع حلقات (Prim's Algorithm) ======================
-def generate_maze_with_loops(width=15, height=12):
-    # حجم أكبر شوية عشان الفرق يبان أكتر
-    maze = np.ones((height*2+1, width*2+1), dtype=int)
-    grid = np.zeros((height, width), dtype=int)  # الخلايا
-    
-    # ابدأ من خلية عشوائية
-    start_x, start_y = 1, 1
-    grid[start_y//2, start_x//2] = 1
-    walls = []
-    
-    # إضافة الجدران الأولية
-    if start_y > 0: walls.append(((start_x, start_y-2), (0, -1)))  # أعلى
-    if start_x < width*2-2: walls.append(((start_x+2, start_y), (1, 0)))  # يمين
-    if start_y < height*2-2: walls.append(((start_x, start_y+2), (0, 1)))  # أسفل
-    if start_x > 0: walls.append(((start_x-2, start_y), (-1, 0)))  # يسار
-    
-    while walls:
-        wall_pos, direction = random.choice(walls)
-        wx, wy = wall_pos
-        dx, dy = direction
-        nx, ny = wx + dx*2, wy + dy*2
-        
-        if 0 <= nx < width*2 and 0 <= ny < height*2:
-            cell_x, cell_y = nx // 2, ny // 2
-            if grid[cell_y, cell_x] == 0:
-                # كسر الجدار وإضافة الخلية
-                maze[wy, wx] = 0
-                maze[ny, nx] = 0
-                grid[cell_y, cell_x] = 1
-                
-                # إضافة جدران جديدة
-                for ndx, ndy in [(0,-1),(1,0),(0,1),(-1,0)]:
-                    nnx, nny = nx + ndx*2, ny + ndy*2
-                    if 0 <= nnx < width*2 and 0 <= nny < height*2:
-                        if grid[nny//2, nnx//2] == 0:
-                            walls.append(((nx + ndx, ny + ndy), (ndx, ndy)))
-        
-        walls.remove((wall_pos, direction))
-    
-    # فتحة البداية والنهاية
-    start = (0, 1)  # أعلى يسار
-    goal = (height*2, width*2-1)  # أسفل يمين
-    maze[start] = 0
-    maze[goal] = 0
-    
-    return maze, start, goal
+    def carve(x, y):
+        maze[y][x] = 0
+        dirs = [(0, 2), (2, 0), (0, -2), (-2, 0)]
+        random.shuffle(dirs)
+        for dx, dy in dirs:
+            nx, ny = x + dx, y + dy
+            if 1 <= nx < width * 2 and 1 <= ny < height * 2 and maze[ny][nx] == 1:
+                maze[y + dy // 2][x + dx // 2] = 0
+                carve(nx, ny)
 
-# باقي الدوال زي ما هي (get_neighbors, draw_maze)
+    carve(1, 1)
 
-def get_neighbors(maze, pos):
-    y, x = pos
-    neighbors = []
-    for dy, dx in [(0,1),(1,0),(0,-1),(-1,0)]:
-        ny, nx = y + dy, x + dx
-        if 0 <= ny < maze.shape[0] and 0 <= nx < maze.shape[1] and maze[ny, nx] == 0:
-            neighbors.append((ny, nx))
-    return neighbors
+    maze[1][0] = 0
+    maze[height * 2 - 1][width * 2] = 0
 
-def draw_maze(maze, start, goal, path=None, visited=None, current=None):
-    rgb_array = np.zeros((maze.shape[0], maze.shape[1], 3), dtype=np.uint8)
-    
-    wall_color = [40, 40, 40]
-    path_color = [220, 220, 220]
-    visited_color = [100, 180, 255]
-    solution_color = [255, 255, 0]
-    current_color = [255, 0, 0]
-    start_color = [0, 255, 0]
-    goal_color = [255, 80, 80]
-    
-    rgb_array[maze == 1] = wall_color
-    rgb_array[maze == 0] = path_color
-    
-    if visited:
-        for pos in visited:
-            rgb_array[pos] = visited_color
-    
-    if path:
-        for pos in path:
-            rgb_array[pos] = solution_color
-    
-    if current and current != goal:
-        rgb_array[current] = current_color
-    
-    rgb_array[start] = start_color
-    rgb_array[goal] = goal_color
-    
-    zoomed = np.repeat(np.repeat(rgb_array, 25, axis=0), 25, axis=1)  # أصغر شوية عشان الحجم
-    return zoomed
+    add_random_openings(maze, holes=60)
 
-# الخوارزميات (نفس اللي فات بس مع random في DFS)
-def solve_algorithm(maze, start, goal, algo):
-    steps = []
-    heuristic = lambda pos: abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
-    
-    if algo == "BFS":
-        queue = deque([[start]])
-        visited = set([start])
-        steps.append(([start], visited.copy(), start))
-        while queue:
-            path = queue.popleft()
-            current = path[-1]
-            steps.append((path[:], visited.copy(), current))
-            if current == goal: return steps
-            for n in get_neighbors(maze, current):
-                if n not in visited:
-                    visited.add(n)
-                    queue.append(path + [n])
-    
-    elif algo == "DFS":
-        stack = [[start]]
-        visited = set()
-        steps.append(([start], visited.copy(), start))
-        while stack:
-            path = stack.pop()
-            current = path[-1]
-            if current in visited: continue
-            visited.add(current)
-            steps.append((path[:], visited.copy(), current))
-            if current == goal: return steps
-            neighbors = get_neighbors(maze, current)
-            random.shuffle(neighbors)  # مهم جدًا للتنويع
-            for n in reversed(neighbors):
-                if n not in visited:
-                    stack.append(path + [n])
-    
-    elif algo == "Greedy":
-        open_list = [[start]]
-        visited = set([start])
-        steps.append(([start], visited.copy(), start))
-        while open_list:
-            open_list.sort(key=lambda p: heuristic(p[-1]))
-            path = open_list.pop(0)
-            current = path[-1]
-            steps.append((path[:], visited.copy(), current))
-            if current == goal: return steps
-            for n in get_neighbors(maze, current):
-                if n not in visited:
-                    visited.add(n)
-                    open_list.append(path + [n])
-    
-    return steps
+    return maze, (1, 0), (height * 2 - 1, width * 2)
 
-# الواجهة (نفس اللي فات مع التعديل في generate)
-col1, col2 = st.columns([1, 3])
 
-with col1:
-    st.markdown("### ⚙️ إعدادات")
-    algorithm = st.selectbox("اختر الخوارزمية", 
-        ["BFS (أقصر مسار)", "DFS (عميق)", "Greedy (جشع)"])
-    algo_key = algorithm.split()[0]
+def add_random_openings(maze, holes=60):
+    h, w = len(maze), len(maze[0])
+    for _ in range(holes):
+        y = random.randint(1, h - 2)
+        x = random.randint(1, w - 2)
+        maze[y][x] = 0
 
-with col2:
-    if 'maze' not in st.session_state:
-        st.session_state.maze, st.session_state.start, st.session_state.goal = generate_maze_with_loops()
-        st.session_state.locked_maze = None
 
-    # أزرار القفل والتجديد (نفس اللي فات)
+# =====================================
+# Build Graph
+# =====================================
+def build_graph(maze):
+    graph = {}
+    dirs = [(0,1), (1,0), (0,-1), (-1,0)]
+    h, w = len(maze), len(maze[0])
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        if st.button("🔒 قفل المتاهة"):
-            st.session_state.locked_maze = (st.session_state.maze.copy(), st.session_state.start, st.session_state.goal)
-            st.rerun()
-    with c2:
-        if st.button("🔄 جديدة"):
-            if not st.session_state.get('locked_maze'):
-                st.session_state.maze, st.session_state.start, st.session_state.goal = generate_maze_with_loops()
-                st.rerun()
-    with c3:
-        if st.session_state.get('locked_maze'):
-            if st.button("🔓 فك"):
-                st.session_state.locked_maze = None
-                st.rerun()
+    for y in range(h):
+        for x in range(w):
+            if maze[y][x] == 0:
+                graph[(y,x)] = []
+                for dy, dx in dirs:
+                    ny, nx = y + dy, x + dx
+                    if 0 <= ny < h and 0 <= nx < w and maze[ny][nx] == 0:
+                        graph[(y,x)].append((ny,nx))
+    return graph
 
-    maze = st.session_state.locked_maze[0] if st.session_state.get('locked_maze') else st.session_state.maze
-    start = st.session_state.locked_maze[1] if st.session_state.get('locked_maze') else st.session_state.start
-    goal = st.session_state.locked_maze[2] if st.session_state.get('locked_maze') else st.session_state.goal
 
-    if st.session_state.get('locked_maze'):
-        st.success("🔒 مقفلة - قارن بحرية!")
+# =====================================
+# Heuristic
+# =====================================
+def manhattan(a, b):
+    return abs(a[0]-b[0]) + abs(a[1]-b[1]) + random.randint(0, 3)
 
-    steps_key = f"steps_{algo_key}"
-    if steps_key not in st.session_state:
-        with st.spinner("جاري الحل..."):
-            st.session_state[steps_key] = solve_algorithm(maze, start, goal, algo_key)
 
-    steps = st.session_state[steps_key]
-    step_idx = st.slider("الخطوة", 0, len(steps)-1, len(steps)-1, key=f"s_{algo_key}")
+# =====================================
+# Maze Renderer
+# =====================================
+def render_maze(maze, pos=None, visited=None, path=None):
+    s = ""
+    for y in range(len(maze)):
+        for x in range(len(maze[0])):
+            if pos and (y,x) == pos:
+                s += "🧍"
+            elif path and (y,x) in path:
+                s += "🟩"
+            elif visited and (y,x) in visited:
+                s += "▫️"
+            elif maze[y][x] == 1:
+                s += "⬛"
+            else:
+                s += "⬜"
+        s += "\n"
+    return s
 
-    path, visited, current = steps[step_idx]
-    st.image(draw_maze(maze, start, goal, path if current == goal else None, visited, current if current != goal else None))
 
-    if current == goal:
-        st.balloons()
-        st.success(f"🎉 حل بـ {algorithm} | طول المسار: {len(path)-1} | مزار: {len(visited)}")
+# =====================================
+# Solvers (Generator style)
+# =====================================
+def bfs_solver(graph, start, goal):
+    queue = deque([[start]])
+    visited = set()
 
-st.markdown("""
-### النتايج المتوقعة دلوقتي:
-- **BFS**: 30–50 خطوة (الأقصر)
-- **Greedy**: 35–70 خطوة (جيد بس مش مثالي)
-- **DFS**: 100–300+ خطوة (طويل جدًا وملتوي)
-""")
+    while queue:
+        path = queue.popleft()
+        node = path[-1]
+
+        if node in visited:
+            continue
+        visited.add(node)
+
+        yield node, visited, None
+
+        if node == goal:
+            yield node, visited, set(path)
+            return
+
+        for n in graph[node]:
+            if n not in visited:
+                queue.append(path + [n])
+
+
+def dfs_solver(graph, start, goal):
+    stack = [[start]]
+    visited = set()
+
+    while stack:
+        path = stack.pop()
+        node = path[-1]
+
+        if node in visited:
+            continue
+        visited.add(node)
+
+        yield node, visited, None
+
+        if node == goal:
+            yield node, visited, set(path)
+            return
+
+        for n in graph[node]:
+            if n not in path:
+                stack.append(path + [n])
+
+
+def greedy_solver(graph, start, goal):
+    queue = [[start]]
+    visited = set()
+
+    while queue:
+        queue.sort(key=lambda p: manhattan(p[-1], goal))
+        path = queue.pop(0)
+        node = path[-1]
+
+        if node in visited:
+            continue
+        visited.add(node)
+
+        yield node, visited, None
+
+        if node == goal:
+            yield node, visited, set(path)
+            return
+
+        for n in graph[node]:
+            if n not in path:
+                queue.append(path + [n])
+
+
+# =====================================
+# Streamlit UI
+# =====================================
+st.set_page_config(page_title="Maze Solver AI", layout="centered")
+st.title("🧠 Maze Solver Visualization")
+
+algo = st.sidebar.selectbox(
+    "Choose Algorithm",
+    ["BFS (Optimal)", "DFS (Bad paths)", "Greedy (Heuristic)"]
+)
+
+speed = st.sidebar.slider("Animation Speed", 0.01, 0.5, 0.15)
+
+if "maze" not in st.session_state:
+    maze, start, goal = generate_maze()
+    st.session_state.maze = maze
+    st.session_state.start = start
+    st.session_state.goal = goal
+    st.session_state.graph = build_graph(maze)
+
+maze = st.session_state.maze
+start = st.session_state.start
+goal = st.session_state.goal
+graph = st.session_state.graph
+
+placeholder = st.empty()
+
+if st.button("▶ Solve"):
+    if algo.startswith("BFS"):
+        solver = bfs_solver(graph, start, goal)
+    elif algo.startswith("DFS"):
+        solver = dfs_solver(graph, start, goal)
+    else:
+        solver = greedy_solver(graph, start, goal)
+
+    for pos, visited, path in solver:
+        placeholder.text(render_maze(maze, pos, visited, path))
+        time.sleep(speed)
+
+st.caption("⬛ Wall | ⬜ Path | ▫️ Visited | 🟩 Final Path | 🧍 Player")
